@@ -1,0 +1,62 @@
+package websocket
+
+import (
+	"net/http"
+
+
+	"qudao.com/tech/netio/transport"
+	"github.com/gorilla/websocket"
+)
+
+type Server struct {
+	callback transport.Callback
+	conn     *websocket.Conn
+}
+
+func NewServer(w http.ResponseWriter, r *http.Request, callback transport.Callback) (transport.Server, error) {
+	conn, err := websocket.Upgrade(w, r, nil, 10240, 10240)
+	if err != nil {
+		return nil, err
+	}
+
+	ret := &Server{
+		callback: callback,
+		conn:     conn,
+	}
+
+	go ret.serveHTTP(w, r)
+
+	return ret, nil
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusBadRequest)
+}
+
+func (s *Server) Close() error {
+	return s.conn.Close()
+}
+
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	defer s.callback.OnClose(s)
+
+	for {
+		t, r, err := s.conn.NextReader()
+		if err != nil {
+			s.conn.Close()
+			return
+		}
+
+		switch t {
+		case websocket.TextMessage:
+			fallthrough
+		case websocket.BinaryMessage:
+			decoder, err := parser.NewDecoder(r)
+			if err != nil {
+				return
+			}
+			s.callback.OnPacket(decoder)
+			decoder.Close()
+		}
+	}
+}
