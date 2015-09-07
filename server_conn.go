@@ -89,15 +89,15 @@ type serverConn struct {
 
 var InvalidError = errors.New("invalid transport")
 
-func newServerConn(req *IORequest, w http.ResponseWriter, r *http.Request, callback serverCallback) (*serverConn, error) {
-	transportName := req.Transport
+func newServerConn(id string, w http.ResponseWriter, r *http.Request, callback serverCallback) (*serverConn, error) {
+	/*transportName := req.Transport
 	creater := callback.transports().Get(transportName)
 	if creater.Name == "" {
 		return nil, InvalidError
-	}
+	}*/
 
 	ret := &serverConn{
-		id:           req.Sid,
+		id:           id,
 		request:      r,
 		callback:     callback,
 		state:        stateNormal,
@@ -107,16 +107,15 @@ func newServerConn(req *IORequest, w http.ResponseWriter, r *http.Request, callb
 		nameSpaces:   make(map[string]*NameSpace),
 	}
 
-	transport, err := creater.Server(w, r, ret)
+	/*transport, err := creater.Server(w, r, ret)
 	if err != nil {
 		return nil, err
 	}
-	ret.setCurrent(transportName, transport)
-	ret.defaultNS = ret.Of("")
+	ret.setCurrent(transportName, transport) */
 
 	go ret.pingLoop()
 	go ret.infinityQueue(ret.in, ret.senderChan)
-
+	ret.defaultNS = ret.Of("")
 	ret.onOpen()
 
 	return ret, nil
@@ -137,10 +136,15 @@ func (c *serverConn) Close() error {
 	if c.upgrading != nil {
 		c.upgrading.Close()
 	}
-
-	if err := c.getCurrent().Close(); err != nil {
-		return err
+	
+	if c.currentName == "" {
+		c.OnClose(nil)	
+	}else{
+		if err := c.getCurrent().Close(); err != nil {
+			return err
+		}
 	}
+	
 	c.setState(stateClosing)
 	return nil
 }
@@ -148,6 +152,17 @@ func (c *serverConn) Close() error {
 func (c *serverConn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req := checkRequest(r)
 	transportName := req.Transport
+	
+	if c.currentName == "" {
+		creater := c.callback.transports().Get(transportName)
+		transport, err := creater.Server(w, r, c)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid transport %s", transportName), http.StatusBadRequest)
+			return
+		}
+		c.setCurrent(transportName, transport)
+	}
+	
 	if c.currentName != transportName {
 		creater := c.callback.transports().Get(transportName)
 		if creater.Name == "" {
@@ -235,20 +250,25 @@ func (c *serverConn) OnPacket(packet Packet) error {
 }
 
 func (c *serverConn) OnClose(server transport.Server) {
-	if t := c.getUpgrade(); server == t {
-		c.setUpgrading("", nil)
+	if c.currentName != "" {
+		if t := c.getUpgrade(); server == t {
+			c.setUpgrading("", nil)
+			t.Close()
+			return
+		}
+		
+		t := c.getCurrent()
+		if server != t {
+			return
+		}
 		t.Close()
-		return
+		
+		if t := c.getUpgrade(); t != nil {
+			t.Close()
+			c.setUpgrading("", nil)
+		}
 	}
-	t := c.getCurrent()
-	if server != t {
-		return
-	}
-	t.Close()
-	if t := c.getUpgrade(); t != nil {
-		t.Close()
-		c.setUpgrading("", nil)
-	}
+	
 	for _, ns := range c.nameSpaces {
 		ns.onDisconnect()
 	}
@@ -353,7 +373,6 @@ func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
 
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
-	
 	for {
 		if c.getState() == stateClosed {
 			return 0, ClosedError
@@ -365,8 +384,6 @@ func (c *serverConn) Write(p []byte) (n int, err error) {
 		}
 	}
 	return 0, ClosedError
-	
-	
 }
 
 func (c *serverConn) pingLoop() {

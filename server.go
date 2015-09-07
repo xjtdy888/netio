@@ -9,11 +9,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"qudao.com/tech/netio/syncmap"
+	
 	//"github.com/kr/pretty"
 	"qudao.com/tech/netio/polling"
-log "github.com/cihub/seelog"
+//log "github.com/cihub/seelog"
 	//"qudao.com/tech/netio/websocket"
 )
 
@@ -64,7 +63,6 @@ type Server struct {
 	transportNames		[]string
 	currentConnection int32
 	stats             *StatsCollector
-	handshaken        *syncmap.SyncMap
 	eventEmitters    map[string]*EventEmitter
 }
 
@@ -92,7 +90,7 @@ func NewServer(transports []string) (*Server, error) {
 			PingTimeout:    60000 * time.Millisecond,
 			PingInterval:   12000 * time.Millisecond,
 			PollingTimeout: 20000 * time.Millisecond,
-			MaxConnection:  20000,
+			MaxConnection:  0,
 			AllowRequest:   func(*http.Request) error { return nil },
 			AllowUpgrades:  true,
 			Cookie:         "io",
@@ -104,12 +102,12 @@ func NewServer(transports []string) (*Server, error) {
 		creaters:       creaters,
 		transportNames: 	transports,
 		stats:          NewStatsCollector(),
-		handshaken:     syncmap.New(),
 		eventEmitters : make(map[string]*EventEmitter),
 	}
-	go srv.garbageCollection()
+	//go srv.garbageCollection()
 	return srv, nil
 }
+/*
 func (s *Server) garbageCollection() {
 	for {
 		<- time.After(10 * time.Second)
@@ -130,7 +128,7 @@ func (s *Server) garbageCollection() {
 		}
 	}
 }
-/*
+
 func (s *Server) watchMessage() {
 
 	watcher, err := s.Subscribe("dispatch-remote", func(sub, rep string, msg *store.Message) {
@@ -159,7 +157,7 @@ func (s *Server) SetPingInterval(t time.Duration) {
 	s.config.PingInterval = t
 }
 
-// SetMaxConnection sets the max connetion. Default is 1000.
+// SetMaxConnection sets the max connetion. Default is 0 ulimit.
 func (s *Server) SetMaxConnection(n int) {
 	s.config.MaxConnection = n
 }
@@ -199,7 +197,7 @@ func (s *Server) SetResourceName(ns string) {
 func (s *Server) namespace(node string) string {
 	return fmt.Sprintf("%s.%s", s.config.ResourceName, node)
 }
-
+/*
 func (s *Server) onHandshake(id string, data *Handshake) {
 	s.handshaken.Set(id, data)
 }
@@ -220,7 +218,7 @@ func (s *Server) handshakeData(data *IORequest) *Handshake {
 		Secure:  "",
 		issued:  false,
 	}
-}
+}*/
 
 func (s *Server) handleHandshake(ir *IORequest, w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("origin") != "" {
@@ -235,10 +233,26 @@ func (s *Server) handleHandshake(ir *IORequest, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	handshakeData := s.handshakeData(ir)
+	n := atomic.AddInt32(&s.currentConnection, 1)
+	if s.config.MaxConnection  > 0 && int(n) > s.config.MaxConnection {
+		atomic.AddInt32(&s.currentConnection, -1)
+		http.Error(w, "too many connections", http.StatusServiceUnavailable)
+		return
+	}
+	
+	var err error
 	sid := s.config.NewId(r)
+	conn, err := newServerConn(sid, w, r, s)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.stats.SessionOpened()
+	s.serverSessions.Set(sid, conn)
+	
 
-	s.onHandshake(sid, handshakeData)
+	//handshakeData := s.handshakeData(ir)
+	//s.onHandshake(sid, handshakeData)
 
 	transports := s.transportNames
 
@@ -310,7 +324,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	conn := s.serverSessions.Get(req.Sid)
 	if conn == nil {
-		data, ok := s.handshaken.Get(req.Sid)
+		http.Error(w, "invalid sid", http.StatusBadRequest)
+		return
+		/*(data, ok := s.handshaken.Get(req.Sid)
 
 		if !ok {
 			http.Error(w, "invalid sid", http.StatusBadRequest)
@@ -324,33 +340,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		handshake.issued = true
 		s.handshaken.Delete(req.Sid)
-		
 
-		n := atomic.AddInt32(&s.currentConnection, 1)
-		if int(n) > s.config.MaxConnection {
-			atomic.AddInt32(&s.currentConnection, -1)
-			http.Error(w, "too many connections", http.StatusServiceUnavailable)
-			return
-		}
-
-		var err error
-		conn, err = newServerConn(req, w, r, s)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		s.serverSessions.Set(req.Sid, conn)
-
-		//s.socketChan <- conn
+		//s.socketChan <- conn*/
 	}
-	http.SetCookie(w, &http.Cookie{
+	/*http.SetCookie(w, &http.Cookie{
 		Name:  s.config.Cookie,
 		Value: req.Sid,
-	})
-	
-	s.stats.SessionOpened()
-	defer s.stats.SessionClosed()
+	})*/
 	
 	if r.Method == "POST" {
 		s.stats.PacketsRecvPs.add(r.ContentLength)
@@ -392,7 +388,10 @@ func (s *Server) SubscribeAsync(subj string) (store.Subscription, error){
 
 func (s *Server) onClose(id string) {
 	s.serverSessions.Remove(id)
-	atomic.AddInt32(&s.currentConnection, -1)
+	if s.config.MaxConnection  > 0 {
+		atomic.AddInt32(&s.currentConnection, -1)
+	}
+	s.stats.SessionClosed()
 }
 
 func (srv *Server) Of(name string) *EventEmitter {
