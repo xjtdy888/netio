@@ -81,7 +81,10 @@ type serverConn struct {
 	senderChan      chan []byte
 
 	pingInterval     time.Duration
+	pingTimeout		 time.Duration
+	ping chan bool
 	missedHeartbeats int32
+	
 
 	nameSpaces map[string]*NameSpace
 	defaultNS  *NameSpace
@@ -104,6 +107,7 @@ func newServerConn(id string, w http.ResponseWriter, r *http.Request, callback s
 		in:           make(chan []byte),
 		senderChan:   make(chan []byte, 0),
 		pingInterval: callback.configure().PingInterval,
+		pingTimeout: callback.configure().PingTimeout,
 		nameSpaces:   make(map[string]*NameSpace),
 	}
 
@@ -113,7 +117,7 @@ func newServerConn(id string, w http.ResponseWriter, r *http.Request, callback s
 	}
 	ret.setCurrent(transportName, transport) */
 
-	go ret.pingLoop()
+	ret.ping = ret.pingLoop()
 	go ret.infinityQueue(ret.in, ret.senderChan)
 	ret.defaultNS = ret.Of("")
 	ret.onOpen()
@@ -137,23 +141,49 @@ func (c *serverConn) Close() error {
 		c.upgrading.Close()
 	}
 	
-	if c.currentName == "" {
-		c.OnClose(nil)	
-	}else{
-		if err := c.getCurrent().Close(); err != nil {
-			return err
-		}
+	for _, ns := range c.nameSpaces {
+		ns.onDisconnect()
 	}
+	c.defaultNS.emit("close", c.defaultNS, nil)
 	
+
+	close(c.ping)
+	close(c.in)				//关闭In会让InifityQueue队列退出
 	c.setState(stateClosing)
 	return nil
 }
+
+func (c *serverConn) OnClose(server transport.Server) {
+	log.Debugf("[%s] OnClose", c.Id())
+	if server != nil {
+		if t := c.getUpgrade(); server == t {
+			c.setUpgrading("", nil)
+			t.Close()
+			return
+		}
+		
+		t := c.getCurrent()
+		if server != t {
+			return
+		}
+		t.Close()
+		
+		if t := c.getUpgrade(); t != nil {
+			t.Close()
+			c.setUpgrading("", nil)
+		}
+	}
+	
+	c.setState(stateClosed)
+	c.callback.onClose(c.id)
+}
+
 
 func (c *serverConn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	req := checkRequest(r)
 	transportName := req.Transport
 	
-	if c.currentName == "" {
+	if c.getCurrent() == nil {
 		creater := c.callback.transports().Get(transportName)
 		transport, err := creater.Server(w, r, c)
 		if err != nil {
@@ -249,36 +279,6 @@ func (c *serverConn) OnPacket(packet Packet) error {
 	//c.Publish(c.namespace("packet"), data)
 }
 
-func (c *serverConn) OnClose(server transport.Server) {
-	if c.currentName != "" {
-		if t := c.getUpgrade(); server == t {
-			c.setUpgrading("", nil)
-			t.Close()
-			return
-		}
-		
-		t := c.getCurrent()
-		if server != t {
-			return
-		}
-		t.Close()
-		
-		if t := c.getUpgrade(); t != nil {
-			t.Close()
-			c.setUpgrading("", nil)
-		}
-	}
-	
-	for _, ns := range c.nameSpaces {
-		ns.onDisconnect()
-	}
-	c.defaultNS.emit("close", c.defaultNS, nil)
-	
-	c.setState(stateClosed)
-	c.callback.onClose(c.id)
-	
-}
-
 func (s *serverConn) onOpen() error {
 
 	packet := new(connectPacket)
@@ -362,7 +362,6 @@ func (c *serverConn) setState(state state) {
 }
 
 func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
-
 	if nameSpace = c.nameSpaces[name]; nameSpace == nil {
 		ee := c.callback.getEmitter(name)
 		nameSpace = NewNameSpace(c, name, ee)
@@ -386,25 +385,34 @@ func (c *serverConn) Write(p []byte) (n int, err error) {
 	return 0, ClosedError
 }
 
-func (c *serverConn) pingLoop() {
+func (c *serverConn) pingLoop() chan bool {
 	ticker := time.NewTicker(c.pingInterval)
-	for {
-		select {
-		case <-ticker.C:
-			{
-				c.defaultNS.sendPacket(new(heartbeatPacket))
-				n := atomic.AddInt32(&c.missedHeartbeats, 1)
-
-				// TODO: Configurable
-				if n > 2 {
-					log.Info("heartBeat missedHeartbeats ", c.Id())
-					ticker.Stop()
-					c.Close()
-					return
+	ping := make(chan bool)
+	go func(){
+		for {
+			select {
+			case <-ticker.C:
+				{
+					c.defaultNS.sendPacket(new(heartbeatPacket))
+					n := atomic.AddInt32(&c.missedHeartbeats, 1)
+	
+					// TODO: Configurable
+					if n > 2 {
+						log.Info("heartBeat missedHeartbeats ", c.Id())
+						ticker.Stop()
+						c.Close()
+						return
+					}
 				}
+
+			case <-ping :
+				ticker.Stop()
+				return 
 			}
 		}
-	}
+	}()
+	return ping
+	
 }
 
 func (c *serverConn) infinityQueue(in <-chan []byte, next chan<- []byte) {
@@ -432,6 +440,7 @@ recv:
 		case v, ok := <-in:
 			if !ok {
 				// in is closed, flush values
+				log.Debugf("[%s] chan[in] closed", c.Id())
 				break recv
 			}
 			pending = append(pending, v)
@@ -440,15 +449,22 @@ recv:
 		case next <- encodePayload(pending):
 			pending = pending[:0]
 		}
-		state := c.getState()
-		if state == stateClosed {
-			return
+	}
+	if c.getCurrent() == nil {
+		log.Debugf("[%s] uninitialized transport, immediately onClose", c.Id())
+		c.OnClose(nil)
+		return 
+	}
+	if len(pending) > 0 {
+		select {
+		case next <- encodePayload(pending):
+			pending = pending[:0]
+			log.Debugf("[%s] Sending the last data and close transport", c.Id())
+		case <-time.After(c.pingTimeout):
 		}
 	}
-	select {
-	case next <- encodePayload(pending):
-		pending = pending[:0]
-	default:
+	transport := c.getCurrent()
+	if err := transport.Close(); err != nil {
+		c.OnClose(transport)
 	}
-
 }

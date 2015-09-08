@@ -87,7 +87,7 @@ func NewServer(transports []string) (*Server, error) {
 	
 	srv := &Server{
 		config: config{
-			PingTimeout:    60000 * time.Millisecond,
+			PingTimeout:    30000 * time.Millisecond,
 			PingInterval:   12000 * time.Millisecond,
 			PollingTimeout: 20000 * time.Millisecond,
 			MaxConnection:  0,

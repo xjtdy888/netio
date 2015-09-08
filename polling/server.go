@@ -9,7 +9,6 @@ import (
 	"net/http"
 
 	"sync"
-	"time"
 
 	log "github.com/cihub/seelog"
 	"qudao.com/tech/netio/transport"
@@ -109,10 +108,6 @@ func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 				data = node
 			}
 		}
-	case <-time.After(time.Second * 30):
-		log.Debugf("[%s] Polling timeout ", r.URL.Path)
-		data = []byte("8::")
-		break
 	case <-closeNotifier.CloseNotify():
 		log.Debugf("[%s] CloseNotifier ", r.URL.Path)
 		return 
