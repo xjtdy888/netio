@@ -136,6 +136,8 @@ func (s *StatsCollector) OnPacketRecv(num int64) {
 }
 
 func (s *StatsCollector) Dump() *StatsResult {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return &StatsResult {
 		
 		StartTime : s.StartTime,
