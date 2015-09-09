@@ -54,7 +54,7 @@ func (self *MovingAverage) flush() {
 }
 
 type StatsResult struct {
-	StartTime  int64	`json:"start_time"`
+	StartTime  time.Time	`json:"start_time"`
 	MaxSession int64	`json:"max_sessions"`
 	ActiveSession int64	`json:"active_sessions"`
 	
@@ -70,7 +70,7 @@ type StatsResult struct {
 type  StatsCollector struct {
 	mutex sync.Mutex
 	
-	StartTime int64
+	StartTime time.Time
 	
 	MaxSession int64
 	ActiveSession int64
@@ -162,7 +162,7 @@ func (s *StatsCollector) updateAverages() {
 	s.PacketsSentPs.flush()
 }
 func (s* StatsCollector) Start() {
-	s.StartTime = time.Now().Unix()
+	s.StartTime = time.Now()
 	go func(){
 		ticker := time.NewTicker(1 * time.Second)
 		for _ = range ticker.C{
