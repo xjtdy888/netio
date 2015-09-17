@@ -176,25 +176,25 @@ func decodePacket(b []byte) (packet Packet, err error) {
 	}
 	return
 }
-func decodeFrames(data []byte) [][]byte {
-	return bytes.Split(data, packetSep)
-}
+
 func decodePayload(data []byte) (packets []Packet, err error) {
+	pl := len(packetSep)
 	
-	if len(data) >= 2 && bytes.Equal(data[0:2], packetSep) {
+	if len(data) >= pl && bytes.Equal(data[0:len(packetSep)], packetSep) {
 		for {
 			if len(data) == 0 {
 				break
 			}
-			data = data[2:]
-			pos := bytes.Index(data[2:], packetSep)
+			data = data[pl:]
+			pos := bytes.Index(data[:], packetSep)
 			var length int
 			length, err = strconv.Atoi(string(data[0:pos]))
 			if err != nil {
 				return
 			}
-			data = data[pos+2:]
+			data = data[pos+pl:]
 			var packet Packet
+			
 			packet, err = decodePacket(data[0:length])
 			if err != nil {
 				return
@@ -202,6 +202,7 @@ func decodePayload(data []byte) (packets []Packet, err error) {
 			packets = append(packets, packet)
 			data = data[length:]
 		}
+		return 
 	} else {
 		var packet Packet
 		packet, err = decodePacket(data)
@@ -210,7 +211,6 @@ func decodePayload(data []byte) (packets []Packet, err error) {
 		}
 		return []Packet{packet}, nil
 	}
-	panic("not reached")
 	return
 }
 

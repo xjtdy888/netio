@@ -222,20 +222,23 @@ func (c *serverConn) OnRawMessage(data []byte) {
 	sl := len(data)
 	c.callback.Stats().PacketsRecvPs.add(int64(sl))
 
-	packets := decodeFrames(data)
-	for _, msg := range packets {
-		c.OnRawPacket(msg)
+	packets, err := decodePayload(data)
+	if err != nil {
+		log.Errorf("[%s] decodePayload error [%s] [%s]", c.id, err, string(data))
+	}
+	for _, packet := range packets {
+		c.OnRawPacket(packet)
 	}
 
 }
-func (c *serverConn) OnRawPacket(data []byte) error {
-	packet, err := decodePacket(data)
+func (c *serverConn) OnRawPacket(packet Packet) error {
+	/*packet, err := decodePacket(data)
 	if err != nil {
 		log.Error("decodePacket error ", err, string(data))
 		return nil
-	}
+	}*/
 	if packet == nil {
-		log.Info("packet == nil ")
+		log.Errorf("[%s] packet == nil ", c.id)
 		return nil
 	}
 
