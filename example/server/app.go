@@ -16,7 +16,7 @@ func main() {
 	if err != nil {
 		
 	}
-	server.SetResourceName("/socket.io/1/")
+	server.SetResourceName("socket.io")
 
 	// Set the on connect handler
 	server.On("connect", func(ns *netio.NameSpace) {
