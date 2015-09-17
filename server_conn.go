@@ -373,7 +373,7 @@ func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
 	for {
-		if c.getState() == stateClosed {
+		if c.getState() == stateClosed || c.getState() == stateClosing {
 			return 0, ClosedError
 		}
 		select {
