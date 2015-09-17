@@ -5,10 +5,13 @@
 * xhr-polling
 * jsonp-polling
 
+
+
 ## 计划实现
 * WebSocket 传输支持
 
 ## 使用
+
 ```go
 package main
 
