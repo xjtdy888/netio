@@ -231,7 +231,7 @@ func (c *serverConn) OnRawMessage(data []byte) {
 func (c *serverConn) OnRawPacket(data []byte) error {
 	packet, err := decodePacket(data)
 	if err != nil {
-		log.Info("decodePacket error ", err, string(data))
+		log.Error("decodePacket error ", err, string(data))
 		return nil
 	}
 	if packet == nil {
