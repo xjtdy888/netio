@@ -1,7 +1,7 @@
 package polling
 
 import (
-	"qudao.com/tech/netio/transport"
+	"github.com/xjtdy888/netio/transport"
 )
 
 var XHRCreater = transport.Creater{

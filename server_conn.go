@@ -10,7 +10,7 @@ import (
 	"time"
 	//	"github.com/kr/pretty"
 	log "github.com/cihub/seelog"
-	"qudao.com/tech/netio/transport"
+	"github.com/xjtdy888/netio/transport"
 )
 
 // Conn is the connection object of engine.io.

@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	log "github.com/cihub/seelog"
-	"qudao.com/tech/netio/transport"
+	"github.com/xjtdy888/netio/transport"
 )
 
 

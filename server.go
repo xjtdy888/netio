@@ -11,9 +11,9 @@ import (
 	"time"
 	
 	//"github.com/kr/pretty"
-	"qudao.com/tech/netio/polling"
+	"github.com/xjtdy888/netio/polling"
 //log "github.com/cihub/seelog"
-	//"qudao.com/tech/netio/websocket"
+	//"github.com/xjtdy888/websocket"
 )
 
 type config struct {
