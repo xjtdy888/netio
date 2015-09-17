@@ -1,14 +1,14 @@
-go 实现的socket.io 兼容0.9.x版本
+## go 实现的socket.io 兼容0.9.x版本
 该版本修改自github.com/googollee/go-engine
 
-目前实现传输协议
-1. xhr-polling
-2. jsonp-polling
+##目前实现传输协议
+* xhr-polling
+* jsonp-polling
 
-计划实现
-1. WebSocket 传输支持
+## 计划实现
+* WebSocket 传输支持
 
-使用
+## 使用
 ```go
 package main
 
