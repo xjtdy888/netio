@@ -142,6 +142,8 @@ func (c *serverConn) Close() error {
 		c.upgrading.Close()
 	}
 	
+	c.setState(stateClosing)
+	
 	for _, ns := range c.nameSpaces {
 		ns.onDisconnect()
 	}
@@ -149,8 +151,7 @@ func (c *serverConn) Close() error {
 	
 
 	close(c.ping)
-	c.setState(stateClosing)
-	
+
 	c.inLocker.Lock()
 	close(c.in)				//关闭In会让InifityQueue队列退出
 	c.inLocker.Unlock()
