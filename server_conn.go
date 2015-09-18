@@ -77,6 +77,7 @@ type serverConn struct {
 	upgrading       transport.Server
 	state           state
 	stateLocker     sync.RWMutex
+	inLocker		sync.RWMutex
 	in              chan []byte
 	senderChan      chan []byte
 
@@ -148,8 +149,11 @@ func (c *serverConn) Close() error {
 	
 
 	close(c.ping)
-	close(c.in)				//关闭In会让InifityQueue队列退出
 	c.setState(stateClosing)
+	
+	c.inLocker.Lock()
+	close(c.in)				//关闭In会让InifityQueue队列退出
+	c.inLocker.Unlock()
 	return nil
 }
 
@@ -375,15 +379,19 @@ func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
 
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
+	c.inLocker.Lock()
+	defer c.inLocker.Unlock()
 	for {
 		if c.getState() == stateClosed || c.getState() == stateClosing {
 			return 0, ClosedError
 		}
+		
 		select {
 		case c.in <- p :
 			return len(p), nil
 		case <- time.After(1 * time.Second) : {}
 		}
+		
 	}
 	return 0, ClosedError
 }
