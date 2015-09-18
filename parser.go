@@ -6,6 +6,7 @@ import (
 	"errors"
 	"regexp"
 	"strconv"
+	"github.com/xjtdy888/runicode"
 )
 
 var (
@@ -177,16 +178,18 @@ func decodePacket(b []byte) (packet Packet, err error) {
 	return
 }
 
-func decodePayload(data []byte) (packets []Packet, err error) {
-	pl := len(packetSep)
+func decodePayload(rawbyte []byte) (packets []Packet, err error) {
+	data := runicode.New(string(rawbyte))
+	sep := runicode.New(string(packetSep))
+	pl := len(sep)
 	
-	if len(data) >= pl && bytes.Equal(data[0:len(packetSep)], packetSep) {
+	if len(data) >= pl && data.HasPrefix(sep) {
 		for {
 			if len(data) == 0 {
 				break
 			}
 			data = data[pl:]
-			pos := bytes.Index(data[:], packetSep)
+			pos := data.Index(sep)
 			var length int
 			length, err = strconv.Atoi(string(data[0:pos]))
 			if err != nil {
@@ -194,8 +197,8 @@ func decodePayload(data []byte) (packets []Packet, err error) {
 			}
 			data = data[pos+pl:]
 			var packet Packet
-			
-			packet, err = decodePacket(data[0:length])
+			packuni := data[0:length]
+			packet, err = decodePacket([]byte(packuni.String()))
 			if err != nil {
 				return
 			}
@@ -205,7 +208,8 @@ func decodePayload(data []byte) (packets []Packet, err error) {
 		return 
 	} else {
 		var packet Packet
-		packet, err = decodePacket(data)
+		packstring := data.String()
+		packet, err = decodePacket([]byte(packstring))
 		if err != nil {
 			return
 		}
