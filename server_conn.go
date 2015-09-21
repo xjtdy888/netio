@@ -77,7 +77,7 @@ type serverConn struct {
 	upgrading       transport.Server
 	state           state
 	stateLocker     sync.RWMutex
-	inLocker		sync.RWMutex
+	closeOnce		sync.Once
 	in              chan []byte
 	senderChan      chan []byte
 
@@ -135,26 +135,30 @@ func (c *serverConn) Request() *http.Request {
 }
 
 func (c *serverConn) Close() error {
-	if c.getState() != stateNormal && c.getState() != stateUpgrading {
-		return nil
-	}
-	if c.upgrading != nil {
-		c.upgrading.Close()
-	}
+	done := make(chan bool)
+	c.closeOnce.Do(func(){
+		defer func(){
+			done <- true
+		}()
+		if c.getState() != stateNormal && c.getState() != stateUpgrading {
+			return 
+		}
+		if c.upgrading != nil {
+			c.upgrading.Close()
+		}
+		
+		c.setState(stateClosing)
+		
+		for _, ns := range c.nameSpaces {
+			ns.onDisconnect()
+		}
+		c.defaultNS.emit("close", c.defaultNS, nil)
 	
-	c.setState(stateClosing)
+		close(c.ping)
+		close(c.in)				//关闭In会让InifityQueue队列退出
+	})
+	<- done
 	
-	for _, ns := range c.nameSpaces {
-		ns.onDisconnect()
-	}
-	c.defaultNS.emit("close", c.defaultNS, nil)
-	
-
-	close(c.ping)
-
-	c.inLocker.Lock()
-	close(c.in)				//关闭In会让InifityQueue队列退出
-	c.inLocker.Unlock()
 	return nil
 }
 
@@ -380,8 +384,6 @@ func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
 
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
-	c.inLocker.Lock()
-	defer c.inLocker.Unlock()
 	for {
 		if c.getState() == stateClosed || c.getState() == stateClosing {
 			return 0, ClosedError
