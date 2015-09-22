@@ -135,11 +135,7 @@ func (c *serverConn) Request() *http.Request {
 }
 
 func (c *serverConn) Close() error {
-	done := make(chan bool)
 	c.closeOnce.Do(func(){
-		defer func(){
-			done <- true
-		}()
 		if c.getState() != stateNormal && c.getState() != stateUpgrading {
 			return 
 		}
@@ -157,7 +153,6 @@ func (c *serverConn) Close() error {
 		close(c.ping)
 		close(c.in)				//关闭In会让InifityQueue队列退出
 	})
-	<- done
 	
 	return nil
 }
