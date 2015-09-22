@@ -183,7 +183,7 @@ func (ns *NameSpace) sendPacket(packet Packet) error {
 		return NotConnected
 	}
 
-	log.Trace("sendPacket ", string(packByte))
+	log.Tracef("[%s] sendPacket [%s]",  ns.Id(), string(packByte))
 	_, err := ns.Conn.Write(packByte)
 	return err
 }
