@@ -13,7 +13,7 @@ import (
 	//"github.com/kr/pretty"
 	"github.com/xjtdy888/netio/polling"
 //log "github.com/cihub/seelog"
-	//"github.com/xjtdy888/websocket"
+	"github.com/xjtdy888/netio/websocket"
 )
 
 type config struct {
@@ -69,7 +69,7 @@ type Server struct {
 // NewServer returns the server suppported given transports. If transports is nil, server will use ["polling", "websocket"] as default.
 func NewServer(transports []string) (*Server, error) {
 	if transports == nil {
-		transports = []string{"xhr-polling","jsonp-polling"}
+		transports = []string{"xhr-polling","jsonp-polling","websocket"}
 	}
 	creaters := make(transportCreaters)
 	for _, t := range transports {
@@ -78,8 +78,8 @@ func NewServer(transports []string) (*Server, error) {
 			creaters[t] = polling.XHRCreater
 		case "jsonp-polling":
 			creaters[t] = polling.JSONPCreater
-		/*case "websocket":
-			creaters[t] = websocket.Creater*/
+		case "websocket":
+			creaters[t] = websocket.Creater
 		default:
 			return nil, InvalidError
 		}

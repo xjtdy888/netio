@@ -1,7 +1,7 @@
 package websocket
 
 import (
-	"qudao.com/tech/netio/transport"
+	"github.com/xjtdy888/netio/transport"
 )
 
 var Creater = transport.Creater{

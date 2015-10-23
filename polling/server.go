@@ -78,7 +78,8 @@ func (p *Polling) Close() error {
 
 func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 	if !p.getLocker.TryLock() {
-		http.Error(w, "overlay get", http.StatusBadRequest)
+		//http.Error(w, "overlay get", http.StatusBadRequest)
+		fmt.Fprintf(w, "8:::::overlay get")
 		return
 	}
 	if p.getState() != stateNormal {
@@ -171,7 +172,7 @@ func (p *Polling) post(w http.ResponseWriter, r *http.Request) {
 			var dedata string
 			err := json.Unmarshal(data, &dedata)
 			if err != nil {
-				log.Errorf("[%s] json.Marshal error [%s]", r.URL.Path, err)
+				log.Errorf("[%s] json.Unmarshal error [%s]", r.URL.Path, err)
 				return 
 			}
 			data = []byte(dedata)
