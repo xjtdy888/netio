@@ -308,12 +308,23 @@ func checkRequest(r *http.Request) *IORequest {
 	}
 }
 
+func SetCrossHeader(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("origin") != "" {
+		// https://developer.mozilla.org/En/HTTP_Access_Control
+		w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("origin"))
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+}
+
 // ServeHTTP handles http request.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	s.stats.ConnectionOpened()
 	defer s.stats.ConnectionClosed()
+	
+	SetCrossHeader(w, r)
 
 	req := checkRequest(r)
 	//pretty.Println("%#v", req)
@@ -326,27 +337,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if conn == nil {
 		http.Error(w, "invalid sid", http.StatusBadRequest)
 		return
-		/*(data, ok := s.handshaken.Get(req.Sid)
-
-		if !ok {
-			http.Error(w, "invalid sid", http.StatusBadRequest)
-			return
-		}
-
-		handshake, ok := data.(*Handshake)
-
-		if !ok {
-			http.Error(w, "invalid handshake", http.StatusBadRequest)
-		}
-		handshake.issued = true
-		s.handshaken.Delete(req.Sid)
-
-		//s.socketChan <- conn*/
 	}
-	/*http.SetCookie(w, &http.Cookie{
-		Name:  s.config.Cookie,
-		Value: req.Sid,
-	})*/
 	
 	if r.Method == "POST" {
 		s.stats.PacketsRecvPs.add(r.ContentLength)
