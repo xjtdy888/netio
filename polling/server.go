@@ -78,8 +78,7 @@ func (p *Polling) Close() error {
 
 func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 	if !p.getLocker.TryLock() {
-		//http.Error(w, "overlay get", http.StatusBadRequest)
-		fmt.Fprintf(w, "8:::::overlay get")
+		http.Error(w, "8:::::overlay get", http.StatusBadRequest)
 		return
 	}
 	if p.getState() != stateNormal {
