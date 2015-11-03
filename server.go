@@ -335,7 +335,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	conn := s.serverSessions.Get(req.Sid)
 	if conn == nil {
-		http.Error(w, "invalid sid", http.StatusBadRequest)
+		http.Error(w, "invalid sid", http.StatusUnauthorized)
 		return
 	}
 	
