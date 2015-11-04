@@ -81,7 +81,7 @@ func (p *Polling) Close() error {
 func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 	if !p.getLocker.TryLock() {
 		//http.Error(w, "8:::::overlay get", http.StatusBadRequest)
-		<- time.After(3 * time.Second)
+		<- time.After(1 * time.Second)
 		fmt.Fprintf(w, "8:::::overlay get [%s] (%s)", p.curreq.RemoteAddr, p.curreq.URL.RequestURI())
 		return
 	}
