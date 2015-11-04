@@ -1,6 +1,7 @@
 package polling
 
 import (
+	"time"
 	"encoding/json"
 	"strings"
 	"bytes"
@@ -31,6 +32,7 @@ type Polling struct {
 	state       state
 	stateLocker sync.Mutex
 	closeChan   chan bool
+	curreq		*http.Request
 }
 
 func NewServer(w http.ResponseWriter, r *http.Request, callback transport.Callback) (transport.Server, error) {
@@ -78,11 +80,14 @@ func (p *Polling) Close() error {
 
 func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 	if !p.getLocker.TryLock() {
-		http.Error(w, "8:::::overlay get", http.StatusBadRequest)
+		//http.Error(w, "8:::::overlay get", http.StatusBadRequest)
+		<- time.After(3 * time.Second)
+		fmt.Fprintf(w, "8:::::overlay get [%s] (%s)", p.curreq.RemoteAddr, p.curreq.URL.RequestURI())
 		return
 	}
+	p.curreq = r
 	if p.getState() != stateNormal {
-		http.Error(w, "closed", http.StatusBadRequest)
+		http.Error(w, "closed", http.StatusForbidden)
 		return
 	}
 
@@ -142,11 +147,11 @@ func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 func (p *Polling) post(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	if !p.postLocker.TryLock() {
-		http.Error(w, "overlay post", http.StatusBadRequest)
+		http.Error(w, "8:::::::overlay post", http.StatusForbidden)
 		return
 	}
 	if p.getState() != stateNormal {
-		http.Error(w, "closed", http.StatusBadRequest)
+		http.Error(w, "8::::::closed", http.StatusForbidden)
 		return
 	}
 
