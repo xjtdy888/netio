@@ -159,6 +159,9 @@ func (c *serverConn) Close() error {
 
 func (c *serverConn) OnClose(server transport.Server) {
 	log.Debugf("[%s] OnClose", c.Id())
+	//TODO c.Close() 因为websocket 网络异常就直接调用onClose了，不像polling那是是被动的
+	//所以这里先临时执行一下c.Close以清除相关事件
+	c.Close()
 	if server != nil {
 		if t := c.getUpgrade(); server == t {
 			c.setUpgrading("", nil)

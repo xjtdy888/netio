@@ -1,8 +1,8 @@
 package websocket
 
 import (
+	"sync"
 	"net/http"
-	//"time"
 
 	log "github.com/cihub/seelog"
 
@@ -10,9 +10,22 @@ import (
 	"github.com/xjtdy888/netio/transport"
 )
 
+type state int
+
+const (
+	stateUnknow state = iota
+	stateNormal
+	stateClosing
+	stateClosed
+)
+
 type Server struct {
 	callback  transport.Callback
 	conn      *websocket.Conn
+	state       state
+	stateLocker sync.Mutex
+	broadOnce sync.Once
+	closeChan   chan bool
 }
 
 func NewServer(w http.ResponseWriter, r *http.Request, callback transport.Callback) (transport.Server, error) {
@@ -24,6 +37,8 @@ func NewServer(w http.ResponseWriter, r *http.Request, callback transport.Callba
 	ret := &Server{
 		callback:  callback,
 		conn:      conn,
+		state:      stateNormal,
+		closeChan:  make(chan bool, 1),
 	}
 
 	go ret.serveHTTP(w, r)
@@ -36,10 +51,36 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Close() error {
-	return s.conn.Close()
+	if s.getState() != stateNormal {
+		return nil
+	}
+	s.setState(stateClosing)
+	s.broadClose()
+	return nil
+}
+
+func (s *Server) broadClose() error {
+	s.broadOnce.Do(func(){
+		close(s.closeChan)
+	})
+	return nil
+}
+
+
+func (s *Server) setState(st state) {
+	s.stateLocker.Lock()
+	defer s.stateLocker.Unlock()
+	s.state = st
+}
+
+func (s *Server) getState() state {
+	s.stateLocker.Lock()
+	defer s.stateLocker.Unlock()
+	return s.state
 }
 
 func (s *Server) writer(closeChan chan bool) {
+	
 	senderChan := s.callback.SenderChan()
 	loop:
 	for {
@@ -52,30 +93,33 @@ func (s *Server) writer(closeChan chan bool) {
 				err := s.conn.WriteMessage(websocket.TextMessage, data)
 				if err != nil {
 					log.Errorf("%s", err)
+					s.Close()
 					break loop
 				}
 			}
+		case <-closeChan :
+			break loop 
 		}
 	}
-	<- closeChan
+	log.Infof("[%s] websocket writer exiting", s.conn.RemoteAddr().String())
+	s.conn.Close()
+	
 }
 
-func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	defer s.callback.OnClose(s)
+func (s *Server) reader(closeChan chan bool) {
 	
-	closeChan := make(chan bool)
-	go s.writer(closeChan)
-
 	s.conn.SetReadLimit(1024)
-
+	loop:
 	for {
-		//s.conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+		//s.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 		t, p, e := s.conn.ReadMessage()
 
 		if e != nil {
-			log.Errorf("conn.ReadMessage %s", e)
-			s.conn.Close()
-			return
+			//if s.getState() == stateNormal {
+				log.Errorf("conn.ReadMessage %s", e)
+				s.Close()
+			//}
+			break loop
 		}
 
 		switch t {
@@ -84,6 +128,29 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		case websocket.BinaryMessage:
 			log.Warnf("conn.ReadMessage type=BinaryMessage")
 		}
+		
+		select {
+			case <- closeChan: {
+				break loop 
+			}
+			default: {}
+		}
 	}
-	closeChan <- true
+	log.Infof("[%s] websocket reader exiting", s.conn.RemoteAddr().String())
+}
+
+func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	defer s.callback.OnClose(s)
+	
+	ch := make(chan bool)
+	go s.writer(ch)
+	go s.reader(ch)
+	
+	select {
+		case <- s.closeChan: {
+			log.Infof("[%s] Closing", s.conn.RemoteAddr().String())
+			close(ch)
+		}
+	}
+	s.setState(stateClosed)
 }
