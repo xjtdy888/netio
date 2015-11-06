@@ -398,7 +398,7 @@ func (c *serverConn) Write(p []byte) (n int, err error) {
 }
 
 func (c *serverConn) pingLoop() chan bool {
-	ticker := time.NewTicker(c.pingInterval)
+	ticker := time.NewTicker(c.pingInterval - 2 * time.Second)
 	ping := make(chan bool)
 	go func(){
 		for {
