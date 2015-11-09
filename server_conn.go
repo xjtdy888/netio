@@ -77,6 +77,7 @@ type serverConn struct {
 	upgrading       transport.Server
 	state           state
 	stateLocker     sync.RWMutex
+	writeLocker     sync.RWMutex
 	closeOnce		sync.Once
 	in              chan []byte
 	senderChan      chan []byte
@@ -135,6 +136,7 @@ func (c *serverConn) Request() *http.Request {
 }
 
 func (c *serverConn) Close() error {
+	
 	c.closeOnce.Do(func(){
 		if c.getState() != stateNormal && c.getState() != stateUpgrading {
 			return 
@@ -144,14 +146,13 @@ func (c *serverConn) Close() error {
 		}
 		
 		c.setState(stateClosing)
-		
 		for _, ns := range c.nameSpaces {
 			ns.onDisconnect()
 		}
 		c.defaultNS.emit("close", c.defaultNS, nil)
 	
 		close(c.ping)
-		close(c.in)				//关闭In会让InifityQueue队列退出
+		c.CloseWriter()
 	})
 	
 	return nil
@@ -380,8 +381,16 @@ func (c *serverConn) Of(name string) (nameSpace *NameSpace) {
 	return
 }
 
+func (c *serverConn) CloseWriter() error {
+	c.writeLocker.Lock()
+	defer c.writeLocker.Unlock()
+	close(c.in)				//关闭In会让InifityQueue队列退出
+	return nil
+}
 
 func (c *serverConn) Write(p []byte) (n int, err error) {
+	c.writeLocker.Lock()
+	defer c.writeLocker.Unlock()
 	for {
 		if c.getState() == stateClosed || c.getState() == stateClosing {
 			return 0, ClosedError
