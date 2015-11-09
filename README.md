@@ -4,11 +4,8 @@
 ##目前实现传输协议
 * xhr-polling
 * jsonp-polling
+* websocket
 
-
-
-## 计划实现
-* WebSocket 传输支持
 
 ## 使用
 
