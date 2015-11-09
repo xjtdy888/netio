@@ -82,7 +82,11 @@ func (p *Polling) get(w http.ResponseWriter, r *http.Request) {
 	if !p.getLocker.TryLock() {
 		//http.Error(w, "8:::::overlay get", http.StatusBadRequest)
 		<- time.After(1 * time.Second)
-		fmt.Fprintf(w, "8:::::overlay get [%s] (%s)", p.curreq.RemoteAddr, p.curreq.URL.RequestURI())
+		addr, uri := "-", "-"
+		if p.curreq != nil {
+			addr, uri = p.curreq.RemoteAddr, p.curreq.URL.RequestURI()
+		}
+		fmt.Fprintf(w, "8:::::overlay get [%s] (%s)", addr, uri)
 		return
 	}
 	p.curreq = r
