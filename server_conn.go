@@ -391,6 +391,13 @@ func (c *serverConn) CloseWriter() error {
 func (c *serverConn) Write(p []byte) (n int, err error) {
 	c.writeLocker.Lock()
 	defer c.writeLocker.Unlock()
+	
+	defer func(){ //TODO: 不知道哪个条件会导致c.in被关闭后，还写数据导致panic，先临时处理
+		if r := recover(); r != nil {
+			log.Errorf("[%s] Write panic prevention %s", c.Id(), r)
+		}
+	}()
+	
 	for {
 		if c.getState() == stateClosed || c.getState() == stateClosing {
 			return 0, ClosedError
